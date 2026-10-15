@@ -84,7 +84,7 @@ npm test            # vitest: translator, Solid pod reader, HTTP API
 npm run typecheck
 npm run dev         # wrangler dev → http://localhost:8787
 npx wrangler login  # once
-npm run deploy      # Cloudflare Workers (*.workers.dev)
+npm run deploy      # Cloudflare Workers: https://translation-table-test-solid.<your-subdomain>.workers.dev
 ```
 
 Once it's deployed you can enter any public WebID in the UI. Classes without a registered
