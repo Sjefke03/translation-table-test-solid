@@ -1,0 +1,19 @@
+{
+  "name": "solid-translation-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Prototype translation layer on top of Solid pods: advertises stored and derivable data types and translates between semantically equivalent representations on the fly.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261006.1",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0",
+    "wrangler": "^4.0.0"
+  }
+}
