@@ -1,29 +1,38 @@
 /**
  * Type and translation registry.
  *
- * A *concept* is the shared meaning ("body temperature", identified by a LOINC code).
- * A *data type* is one concrete representation of that concept: its own field names,
- * its own unit. Two hospitals can store the same concept as different data types.
+ * A *concept* is the shared meaning, identified by its LOINC IRI ("body temperature").
+ * A *data type* is an RDF class that represents that concept with its own predicates
+ * and unit. Two hospitals can write the same concept into a Solid pod as different classes.
  * A *translation* is a directed function from one data type to another of the same concept.
+ *
+ * Translations work on plain field records; `fields` maps each record field to the RDF
+ * predicate used in the pod, so parsing/serialising (src/rdf.ts) stays generic.
  */
 
 export type DataRecord = Record<string, unknown>;
 
 export interface Concept {
-  id: string; // e.g. "loinc:8310-5"
+  id: string; // LOINC IRI
   label: string;
 }
 
+export type FieldKind = "iri" | "decimal" | "dateTime";
+
+export interface FieldSpec {
+  predicate: string;
+  kind: FieldKind;
+}
+
 export interface DataType {
-  id: string; // IRI-like identifier advertised to applications
-  concept: string; // Concept id this type is a representation of
+  id: string; // RDF class IRI, used as solid:forClass in type indexes
+  concept: string;
   label: string;
   unit: string; // UCUM unit code
   symbol: string; // Human-readable unit for display
-  /** Field holding the measured value; used for display and docs. */
+  /** Field holding the measured value. */
   valueField: string;
-  /** Example record, also serves as lightweight schema documentation. */
-  example: DataRecord;
+  fields: Record<string, FieldSpec>;
 }
 
 export interface Translation {
@@ -35,89 +44,113 @@ export interface Translation {
   apply: (record: DataRecord) => DataRecord;
 }
 
-const NS_A = "https://hospital-a.example/vocab#";
-const NS_B = "https://hospital-b.example/vocab#";
-const NS_F = "https://fhir.example/vocab#";
+export const NS = {
+  ha: "https://hospital-a.example/vocab#",
+  hb: "https://hospital-b.example/vocab#",
+  rx: "https://research.example/vocab#",
+};
 
 export const TYPE = {
-  tempCelsiusA: `${NS_A}BodyTemperatureCelsius`,
-  tempFahrenheitB: `${NS_B}BodyTemperatureFahrenheit`,
-  tempKelvinFhir: `${NS_F}BodyTemperatureKelvin`,
-  glucoseMgdlA: `${NS_A}BloodGlucoseMgPerDl`,
-  glucoseMmolB: `${NS_B}BloodGlucoseMmolPerL`,
-  weightKgA: `${NS_A}BodyWeightKg`,
-  weightLbB: `${NS_B}BodyWeightLb`,
+  tempCelsiusA: `${NS.ha}BodyTemperatureCelsius`,
+  tempFahrenheitB: `${NS.hb}BodyTemperatureFahrenheit`,
+  tempKelvinRx: `${NS.rx}BodyTemperatureKelvin`,
+  glucoseMgdlA: `${NS.ha}BloodGlucoseMgPerDl`,
+  glucoseMmolB: `${NS.hb}BloodGlucoseMmolPerL`,
+  weightKgA: `${NS.ha}BodyWeightKg`,
+  weightLbB: `${NS.hb}BodyWeightLb`,
 } as const;
 
+const LOINC = {
+  temperature: "https://loinc.org/8310-5/",
+  glucose: "https://loinc.org/2339-0/",
+  weight: "https://loinc.org/29463-7/",
+};
+
 export const concepts: Concept[] = [
-  { id: "loinc:8310-5", label: "Body temperature" },
-  { id: "loinc:2339-0", label: "Glucose [Mass/volume] in Blood" },
-  { id: "loinc:29463-7", label: "Body weight" },
+  { id: LOINC.temperature, label: "Body temperature" },
+  { id: LOINC.glucose, label: "Glucose [Mass/volume] in Blood" },
+  { id: LOINC.weight, label: "Body weight" },
 ];
+
+// Field layouts per source. Hospital A and B name the same things differently.
+const hospitalA = (valueField: string): Record<string, FieldSpec> => ({
+  patientId: { predicate: `${NS.ha}patient`, kind: "iri" },
+  [valueField]: { predicate: `${NS.ha}${valueField}`, kind: "decimal" },
+  measuredAt: { predicate: `${NS.ha}measuredAt`, kind: "dateTime" },
+});
+const hospitalB = (valueField: string): Record<string, FieldSpec> => ({
+  patient: { predicate: `${NS.hb}subject`, kind: "iri" },
+  [valueField]: { predicate: `${NS.hb}${valueField}`, kind: "decimal" },
+  timestamp: { predicate: `${NS.hb}timestamp`, kind: "dateTime" },
+});
 
 export const dataTypes: DataType[] = [
   {
     id: TYPE.tempCelsiusA,
-    concept: "loinc:8310-5",
+    concept: LOINC.temperature,
     label: "Body temperature (Hospital A, °C)",
     unit: "Cel",
     symbol: "°C",
     valueField: "temperatureC",
-    example: { patientId: "p-001", temperatureC: 37.2, measuredAt: "2026-10-01T08:00:00Z" },
+    fields: hospitalA("temperatureC"),
   },
   {
     id: TYPE.tempFahrenheitB,
-    concept: "loinc:8310-5",
+    concept: LOINC.temperature,
     label: "Body temperature (Hospital B, °F)",
     unit: "[degF]",
     symbol: "°F",
     valueField: "tempF",
-    example: { patient: "p-001", tempF: 98.96, timestamp: "2026-10-01T08:00:00Z" },
+    fields: hospitalB("tempF"),
   },
   {
-    id: TYPE.tempKelvinFhir,
-    concept: "loinc:8310-5",
+    id: TYPE.tempKelvinRx,
+    concept: LOINC.temperature,
     label: "Body temperature (research export, K)",
     unit: "K",
     symbol: "K",
     valueField: "value",
-    example: { subject: "p-001", value: 310.35, unit: "K", effectiveDateTime: "2026-10-01T08:00:00Z" },
+    fields: {
+      subject: { predicate: `${NS.rx}subject`, kind: "iri" },
+      value: { predicate: `${NS.rx}value`, kind: "decimal" },
+      effectiveDateTime: { predicate: `${NS.rx}effectiveDateTime`, kind: "dateTime" },
+    },
   },
   {
     id: TYPE.glucoseMgdlA,
-    concept: "loinc:2339-0",
+    concept: LOINC.glucose,
     label: "Blood glucose (Hospital A, mg/dL)",
     unit: "mg/dL",
     symbol: "mg/dL",
     valueField: "glucoseMgDl",
-    example: { patientId: "p-001", glucoseMgDl: 99, measuredAt: "2026-10-01T08:00:00Z" },
+    fields: hospitalA("glucoseMgDl"),
   },
   {
     id: TYPE.glucoseMmolB,
-    concept: "loinc:2339-0",
+    concept: LOINC.glucose,
     label: "Blood glucose (Hospital B, mmol/L)",
     unit: "mmol/L",
     symbol: "mmol/L",
     valueField: "glucoseMmolL",
-    example: { patient: "p-001", glucoseMmolL: 5.5, timestamp: "2026-10-01T08:00:00Z" },
+    fields: hospitalB("glucoseMmolL"),
   },
   {
     id: TYPE.weightKgA,
-    concept: "loinc:29463-7",
+    concept: LOINC.weight,
     label: "Body weight (Hospital A, kg)",
     unit: "kg",
     symbol: "kg",
     valueField: "weightKg",
-    example: { patientId: "p-001", weightKg: 72.5, measuredAt: "2026-10-01T08:00:00Z" },
+    fields: hospitalA("weightKg"),
   },
   {
     id: TYPE.weightLbB,
-    concept: "loinc:29463-7",
+    concept: LOINC.weight,
     label: "Body weight (Hospital B, lb)",
     unit: "[lb_av]",
     symbol: "lb",
     valueField: "weightLb",
-    example: { patient: "p-001", weightLb: 159.8, timestamp: "2026-10-01T08:00:00Z" },
+    fields: hospitalB("weightLb"),
   },
 ];
 
@@ -143,7 +176,7 @@ export const translations: Translation[] = [
   {
     from: TYPE.tempCelsiusA,
     to: TYPE.tempFahrenheitB,
-    description: "°F = °C × 9/5 + 32; patientId→patient, measuredAt→timestamp",
+    description: "°F = °C × 9/5 + 32; ha:patient→hb:subject, ha:measuredAt→hb:timestamp",
     lossless: true,
     apply: (r) => ({
       patient: r.patientId,
@@ -154,7 +187,7 @@ export const translations: Translation[] = [
   {
     from: TYPE.tempFahrenheitB,
     to: TYPE.tempCelsiusA,
-    description: "°C = (°F − 32) × 5/9; patient→patientId, timestamp→measuredAt",
+    description: "°C = (°F − 32) × 5/9; hb:subject→ha:patient, hb:timestamp→ha:measuredAt",
     lossless: true,
     apply: (r) => ({
       patientId: r.patient,
@@ -165,18 +198,17 @@ export const translations: Translation[] = [
   // Temperature: Hospital A (°C) <-> research export (K). °F <-> K is reached via °C.
   {
     from: TYPE.tempCelsiusA,
-    to: TYPE.tempKelvinFhir,
+    to: TYPE.tempKelvinRx,
     description: "K = °C + 273.15",
     lossless: true,
     apply: (r) => ({
       subject: r.patientId,
       value: round(num(r, "temperatureC") + 273.15, 2),
-      unit: "K",
       effectiveDateTime: r.measuredAt,
     }),
   },
   {
-    from: TYPE.tempKelvinFhir,
+    from: TYPE.tempKelvinRx,
     to: TYPE.tempCelsiusA,
     description: "°C = K − 273.15",
     lossless: true,

@@ -16,9 +16,9 @@ describe("Translator", () => {
   });
 
   it("chains translations when there is no direct edge (°F -> °C -> K)", () => {
-    const { record, path } = translator.translate({ patient: "p1", tempF: 98.6, timestamp: "t" }, TYPE.tempFahrenheitB, TYPE.tempKelvinFhir);
-    expect(record).toEqual({ subject: "p1", value: 310.15, unit: "K", effectiveDateTime: "t" });
-    expect(path.map((s) => s.to)).toEqual([TYPE.tempCelsiusA, TYPE.tempKelvinFhir]);
+    const { record, path } = translator.translate({ patient: "p1", tempF: 98.6, timestamp: "t" }, TYPE.tempFahrenheitB, TYPE.tempKelvinRx);
+    expect(record).toEqual({ subject: "p1", value: 310.15, effectiveDateTime: "t" });
+    expect(path.map((s) => s.to)).toEqual([TYPE.tempCelsiusA, TYPE.tempKelvinRx]);
   });
 
   it("converts glucose mg/dL <-> mmol/L", () => {
