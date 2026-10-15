@@ -32,6 +32,38 @@ asks for. Translation happens on read; nothing extra is written to the pod.
 | **Type index (output)** | `/api/view/type-index` is itself a Solid type index of the *translated view*. Every class the service can serve gets a `solid:TypeRegistration` whose `solid:instance` points at the service's data view, marked `tr:Stored` or `tr:Virtual`. Apps that already discover data through type indexes can discover the virtual classes the same way. |
 | **Provenance (output)** | Translated records get a new IRI in the view and `prov:wasDerivedFrom` the original pod resource. Native records keep their pod IRI. |
 
+## SMART on FHIR access
+
+Apps that speak SMART on FHIR can connect without knowing anything about Solid. The
+service is both the SMART authorization server and a FHIR R4 endpoint over the pod.
+
+```
+ App ──▶ /fhir/.well-known/smart-configuration     discover endpoints
+     ──▶ /smart/authorize (PKCE S256)               pod owner picks pod, sees ALL data available
+                                                    (stored + translatable units), grants per LOINC code
+     ◀── redirect_uri?code=…
+     ──▶ POST /smart/token                          → access_token, scope, patient
+     ──▶ GET /smart/grant                           what this grant covers, with every unit on offer
+     ──▶ GET /fhir/Observation?code=…&unit=[degF]   FHIR Observations, translated on the fly
+```
+
+- **Scopes**: SMART v2 and v1 patient scopes: `patient/Observation.rs`, `patient/Observation.rs?code=http://loinc.org|8310-5`,
+  `patient/Patient.rs`, `patient/*.read`, `launch/patient`. The granted scope is always per LOINC code.
+- **Consent**: the authorize page reads the pod and lists every concept in it, with the classes it is stored as, record
+  counts and every unit it can be served in (stored / virtual). Concepts the app did not request are shown but cannot be
+  ticked. Classes without a FHIR mapping are listed too.
+- **FHIR**: `Observation` search (`patient`, `code`, and a non-standard `unit` = UCUM code to translate into; without it each
+  record is returned in its stored unit) and `Patient` read. Observations carry a LOINC `code`, a UCUM `valueQuantity`,
+  `meta.tag` `native`/`translated`, and extensions with the Solid source IRI, stored class and translation path.
+- **Demo app**: `/smart/demo` runs the full standalone launch in the browser.
+- **Tokens**: codes and access tokens are HS256-signed JWTs, so no storage is needed. Set a real secret with
+  `npx wrangler secret put TOKEN_SECRET` (or in the dashboard: Worker → Settings → Variables and Secrets). Without it a
+  demo secret from this repo is used, which means anyone can forge tokens.
+
+Demo limitations: the pod owner is not authenticated on the consent screen (a real deployment logs them in with
+Solid-OIDC and only offers pods their WebID controls), any `client_id`/`redirect_uri` is accepted (no client registration),
+authorization codes are not single-use (stateless), and there are no refresh tokens.
+
 ## Concepts
 
 | Term | Meaning | Example |
@@ -63,6 +95,10 @@ laid out like real pods: profile, public type index, a container and resources.
 | Method | Path | Description |
 |---|---|---|
 | GET | `/` | Test UI: Alice's temperatures served as any temperature class |
+| GET | `/smart/demo` | Demo SMART on FHIR app (see above) |
+| GET | `/fhir/.well-known/smart-configuration`, `/fhir/metadata` | SMART discovery and FHIR CapabilityStatement |
+| GET/POST | `/smart/authorize`, POST `/smart/token` | SMART authorization (consent) and token endpoints |
+| GET | `/smart/grant`, `/fhir/Observation`, `/fhir/Patient/:id` | Bearer-protected: grant summary and FHIR data |
 | GET | `/api/view/types?webid=…` | What the pod holds (resources, type indexes, warnings) and the advertised classes, stored or virtual (JSON) |
 | GET | `/api/view/type-index?webid=…` | Solid type index of the translated view (Turtle / JSON-LD) |
 | GET | `/api/view/data?webid=…&type=<class IRI>` | Records served as that class. Turtle by default; `Accept: application/ld+json` for JSON-LD, `application/json` for JSON with full provenance. `?format=turtle\|jsonld\|json` overrides. |
@@ -80,7 +116,7 @@ curl -H "Accept: text/turtle" \
 
 ```sh
 npm install
-npm test            # vitest: translator, Solid pod reader, HTTP API
+npm test            # vitest: translator, Solid pod reader, HTTP API, SMART flow
 npm run typecheck
 npm run dev         # wrangler dev → http://localhost:8787
 npx wrangler login  # once
@@ -101,6 +137,10 @@ so only the mock pods have been tested.)
 - `src/mockpod.ts`: the two mock pods as Turtle documents
 - `src/index.ts`: Worker routes and content negotiation
 - `src/ui.ts`: test page
+- `src/smart.ts`: SMART authorization server (scopes, consent, token, PKCE, bearer check)
+- `src/fhir.ts`: FHIR view (Observations, Patient, CapabilityStatement, "all data available" summary)
+- `src/smartui.ts`: consent screen and demo SMART app
+- `src/jwt.ts`: HS256 JWTs and PKCE with WebCrypto
 
 ## Limitations and next steps
 

@@ -14,7 +14,10 @@ export type DataRecord = Record<string, unknown>;
 
 export interface Concept {
   id: string; // LOINC IRI
+  code: string; // LOINC code, used as the FHIR Observation.code
   label: string;
+  /** FHIR observation-category code. */
+  category: "vital-signs" | "laboratory";
 }
 
 export type FieldKind = "iri" | "decimal" | "dateTime";
@@ -67,9 +70,9 @@ const LOINC = {
 };
 
 export const concepts: Concept[] = [
-  { id: LOINC.temperature, label: "Body temperature" },
-  { id: LOINC.glucose, label: "Glucose [Mass/volume] in Blood" },
-  { id: LOINC.weight, label: "Body weight" },
+  { id: LOINC.temperature, code: "8310-5", label: "Body temperature", category: "vital-signs" },
+  { id: LOINC.glucose, code: "2339-0", label: "Glucose [Mass/volume] in Blood", category: "laboratory" },
+  { id: LOINC.weight, code: "29463-7", label: "Body weight", category: "vital-signs" },
 ];
 
 // Field layouts per source. Hospital A and B name the same things differently.

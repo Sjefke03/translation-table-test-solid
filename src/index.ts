@@ -1,13 +1,24 @@
+import { availableData, bundle, capabilityStatement, observations, patientId, patientResource } from "./fhir";
 import { mockPods, mockWebId, serveMockPod } from "./mockpod";
 import { toJsonLd } from "./rdf";
 import { concepts, dataTypes, translations } from "./registry";
 import { TranslationService, UnknownTypeError } from "./service";
+import { authorizeGet, authorizePost, bearer, fhirBase, smartConfiguration, token, type SmartContext } from "./smart";
+import { demoAppHtml } from "./smartui";
 import { readPod, type FetchFn } from "./solid";
 import { Translator } from "./translator";
 import { uiHtml } from "./ui";
 
 export const translator = new Translator(dataTypes, translations);
 const service = new TranslationService(translator);
+
+export interface Env {
+  /** HMAC secret for SMART codes and tokens. Set with `wrangler secret put TOKEN_SECRET`. */
+  TOKEN_SECRET?: string;
+}
+
+// Fallback so the demo works without configuration. Anyone who reads this repo can forge tokens with it.
+const DEMO_SECRET = "demo-only-secret-set-TOKEN_SECRET-in-production";
 
 const CORS = { "access-control-allow-origin": "*" };
 
@@ -46,9 +57,89 @@ function podFetch(origin: string): FetchFn {
   };
 }
 
-async function handle(request: Request): Promise<Response> {
+const fhirJson = (body: unknown, status = 200, extra: Record<string, string> = {}) =>
+  new Response(JSON.stringify(body, null, 2), { status, headers: { "content-type": "application/fhir+json; charset=utf-8", ...CORS, ...extra } });
+
+const outcome = (status: number, code: string, diagnostics: string) =>
+  fhirJson({ resourceType: "OperationOutcome", issue: [{ severity: "error", code, diagnostics }] }, status,
+    status === 401 ? { "www-authenticate": 'Bearer realm="fhir", error="invalid_token"' } : {});
+
+/** FHIR + SMART routes; returns null when the path is not one of them. */
+async function handleSmart(request: Request, url: URL, ctx: SmartContext): Promise<Response | null> {
+  const { pathname, origin } = url;
+  const get = request.method === "GET";
+
+  if (get && (pathname === "/.well-known/smart-configuration" || pathname === "/fhir/.well-known/smart-configuration")) {
+    return json(smartConfiguration(origin));
+  }
+  if (get && pathname === "/fhir/metadata") return fhirJson(capabilityStatement(fhirBase(origin)));
+  if (get && pathname === "/smart/authorize") return authorizeGet(url, ctx);
+  if (request.method === "POST" && pathname === "/smart/authorize") return authorizePost(request, ctx);
+  if (request.method === "POST" && pathname === "/smart/token") return token(request, ctx);
+  if (get && pathname === "/smart/demo") return new Response(demoAppHtml, { headers: { "content-type": "text/html; charset=utf-8" } });
+
+  const isFhirRead = get && (pathname === "/smart/grant" || pathname === "/fhir/Observation" || pathname.startsWith("/fhir/Patient/"));
+  if (!isFhirRead) return null;
+
+  const grant = await bearer(request, ctx.secret);
+  if (!grant) return outcome(401, "login", "Missing, invalid or expired access token");
+  const pod = await ctx.loadPod(grant.webId).catch((e: Error) => e);
+  if (pod instanceof Error) return outcome(502, "exception", `Could not read pod: ${pod.message}`);
+  const pid = patientId(grant.webId);
+
+  // What this grant gives access to: the granted part of "all data available".
+  if (pathname === "/smart/grant") {
+    return json({
+      patient: grant.patientRead ? patientResource(pod) : undefined,
+      patientId: pid,
+      clientId: grant.clientId,
+      scope: grant.scope,
+      data: availableData(pod, ctx.translator).filter((c) => grant.codes.includes(c.code)),
+    });
+  }
+
+  if (pathname.startsWith("/fhir/Patient/")) {
+    if (!grant.patientRead) return outcome(403, "forbidden", "Scope does not include patient/Patient.rs");
+    if (decodeURIComponent(pathname.slice("/fhir/Patient/".length)) !== pid) return outcome(403, "forbidden", "Token is for another patient");
+    return fhirJson(patientResource(pod));
+  }
+
+  // GET /fhir/Observation?patient=&code=&unit=
+  const patient = url.searchParams.get("patient")?.replace(/^Patient\//, "");
+  if (patient && patient !== pid) return outcome(403, "forbidden", "Token is for another patient");
+  const codeParam = url.searchParams.get("code");
+  let codes = grant.codes;
+  if (codeParam) {
+    const asked = codeParam.split(",").map((t) => {
+      const [system, code] = t.includes("|") ? t.split("|") : ["", t];
+      return system && system !== "http://loinc.org" ? "" : code;
+    });
+    codes = codes.filter((c) => asked.includes(c));
+  }
+  const unit = url.searchParams.get("unit") ?? undefined;
+  const resources = observations(pod, ctx.translator, { codes, unit });
+  return fhirJson(bundle(resources, fhirBase(origin), url.toString()));
+}
+
+async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const { pathname, origin } = url;
+
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: { ...CORS, "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "authorization, content-type, accept" },
+    });
+  }
+
+  const smart = await handleSmart(request, url, {
+    origin,
+    secret: env.TOKEN_SECRET || DEMO_SECRET,
+    translator,
+    loadPod: (webId) => readPod(webId, translator, podFetch(origin)),
+    examplePods: mockPods.map((p) => ({ label: p.label, webId: mockWebId(origin, p.name) })),
+  });
+  if (smart) return smart;
 
   if (request.method === "GET" && pathname === "/") {
     return new Response(uiHtml, { headers: { "content-type": "text/html; charset=utf-8" } });
@@ -142,11 +233,11 @@ async function handle(request: Request): Promise<Response> {
 }
 
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request: Request, env: Env = {}): Promise<Response> {
     try {
-      return await handle(request);
+      return await handle(request, env);
     } catch (e) {
       return error(500, (e as Error).message);
     }
   },
-} satisfies ExportedHandler;
+} satisfies ExportedHandler<Env>;

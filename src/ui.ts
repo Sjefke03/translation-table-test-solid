@@ -47,6 +47,8 @@ export const uiHtml = String.raw`<!doctype html>
   <p class="lead">Test case: Alice's Solid pod holds body temperatures written by Hospital A (<code>ha:BodyTemperatureCelsius</code>, °C)
   and Hospital B (<code>hb:BodyTemperatureFahrenheit</code>, °F). The service reads her WebID profile and type index,
   advertises every class it can serve (stored or translated), and serves all readings as the one class an app understands.</p>
+  <p class="lead">SMART on FHIR: try the <a href="/smart/demo">demo SMART app</a>. It asks for access, the pod owner sees all available data and grants a part of it,
+  and the app reads FHIR Observations in the units it wants. Discovery: <a href="/fhir/.well-known/smart-configuration">smart-configuration</a> · <a href="/fhir/metadata">CapabilityStatement</a>.</p>
 
   <div class="panel controls">
     <div class="wide"><label for="preset">Example pod</label><select id="preset"></select></div>
