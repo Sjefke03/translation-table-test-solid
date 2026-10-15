@@ -43,7 +43,8 @@ export const uiHtml = String.raw`<!doctype html>
 </head>
 <body>
 <main>
-  <h1>Pod Translation Service</h1>
+  <p class="lead" style="margin:0 0 6px"><a href="/">← Walkthrough</a></p>
+  <h1>Pod Translation Service · explorer</h1>
   <p class="lead">Test case: Alice's Solid pod holds body temperatures written by Hospital A (<code>ha:BodyTemperatureCelsius</code>, °C)
   and Hospital B (<code>hb:BodyTemperatureFahrenheit</code>, °F). The service reads her WebID profile and type index,
   advertises every class it can serve (stored or translated), and serves all readings as the one class an app understands.</p>

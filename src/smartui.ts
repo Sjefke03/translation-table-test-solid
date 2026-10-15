@@ -135,7 +135,8 @@ export function consentPage(
  */
 export const demoAppHtml = page(
   "SMART demo app",
-  `<h1>SMART demo app</h1>
+  `<p class="muted" style="margin:0 0 6px"><a href="/">← Walkthrough</a></p>
+  <h1>SMART demo app</h1>
   <p class="muted">A third-party app connecting to the pod translation service with SMART on FHIR (standalone launch, PKCE).
   It asks for access, you pick what to share, and it then reads FHIR Observations in the units it prefers.</p>
   <div id="connect" class="panel">

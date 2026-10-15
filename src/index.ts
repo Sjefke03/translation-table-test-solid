@@ -141,7 +141,8 @@ async function handle(request: Request, env: Env): Promise<Response> {
   });
   if (smart) return smart;
 
-  if (request.method === "GET" && pathname === "/") {
+  // "/" is the walkthrough in public/ (Workers static assets); this is the fallback when assets are absent.
+  if (request.method === "GET" && (pathname === "/" || pathname === "/explorer")) {
     return new Response(uiHtml, { headers: { "content-type": "text/html; charset=utf-8" } });
   }
 

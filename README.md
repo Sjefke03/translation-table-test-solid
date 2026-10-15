@@ -94,7 +94,8 @@ laid out like real pods: profile, public type index, a container and resources.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/` | Test UI: Alice's temperatures served as any temperature class |
+| GET | `/` | Walkthrough: six pages telling the story (patient, hospitals, provider, client, switching), with live data |
+| GET | `/explorer` | Pod explorer: Alice's temperatures served as any temperature class |
 | GET | `/smart/demo` | Demo SMART on FHIR app (see above) |
 | GET | `/fhir/.well-known/smart-configuration`, `/fhir/metadata` | SMART discovery and FHIR CapabilityStatement |
 | GET/POST | `/smart/authorize`, POST `/smart/token` | SMART authorization (consent) and token endpoints |
@@ -118,7 +119,7 @@ curl -H "Accept: text/turtle" \
 npm install
 npm test            # vitest: translator, Solid pod reader, HTTP API, SMART flow
 npm run typecheck
-npm run dev         # wrangler dev → http://localhost:8787
+npm run dev         # wrangler dev → http://localhost:8787 (walkthrough at /, explorer at /explorer)
 npx wrangler login  # once
 npm run deploy      # Cloudflare Workers: https://translation-table-test-solid.<your-subdomain>.workers.dev
 ```
@@ -136,7 +137,8 @@ so only the mock pods have been tested.)
 - `src/service.ts`: advertising, reading with translation, provenance, translated type index
 - `src/mockpod.ts`: the two mock pods as Turtle documents
 - `src/index.ts`: Worker routes and content negotiation
-- `src/ui.ts`: test page
+- `public/`: the walkthrough (static assets: `index.html`, `story.js`, `story.css`)
+- `src/ui.ts`: pod explorer page
 - `src/smart.ts`: SMART authorization server (scopes, consent, token, PKCE, bearer check)
 - `src/fhir.ts`: FHIR view (Observations, Patient, CapabilityStatement, "all data available" summary)
 - `src/smartui.ts`: consent screen and demo SMART app

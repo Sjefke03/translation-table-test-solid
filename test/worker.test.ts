@@ -110,8 +110,8 @@ describe("misc", () => {
     expect(((await res.json()) as any).record).toEqual({ patientId: "x", weightKg: 99.79, measuredAt: "t" });
   });
 
-  it("serves the test UI at /", async () => {
-    const res = await call("/", "text/html");
+  it("serves the explorer UI at /explorer", async () => {
+    const res = await call("/explorer", "text/html");
     expect(res.headers.get("content-type")).toContain("text/html");
     expect(await res.text()).toContain("Pod Translation Service");
   });
